@@ -7,7 +7,7 @@ from telegram.helpers import escape_markdown
 
 # ==================== 配置 ====================
 TOKEN = "8781850872:AAFcGdfKXv8ktPbTiUNBHvzBBm0uO2R7EoE"
-ADMIN_GROUP_ID = -3939997685        # 管理员群组ID（机器人必须加入）
+ADMIN_GROUP_ID = -1003939997685        # 管理员群组ID（机器人必须加入）
 SUPER_ADMIN_ID = 8107909168             # 超级管理员的用户ID
 NON_WORKING_START = 2                   # 凌晨2点开始休息
 NON_WORKING_END = 10                    # 上午10点结束休息
