@@ -7,8 +7,8 @@ from telegram.helpers import escape_markdown
 
 # ==================== 配置 ====================
 TOKEN = "8781850872:AAFcGdfKXv8ktPbTiUNBHvzBBm0uO2R7EoE"
-ADMIN_GROUP_ID = -5013531284        # 管理员群组ID（机器人必须加入）
-SUPER_ADMIN_ID = 8107909168             # 超级管理员的用户ID（只有这个人可以修改群组）
+ADMIN_GROUP_ID = -3939997685        # 管理员群组ID（机器人必须加入）
+SUPER_ADMIN_ID = 8107909168             # 超级管理员的用户ID
 NON_WORKING_START = 2                   # 凌晨2点开始休息
 NON_WORKING_END = 10                    # 上午10点结束休息
 # =============================================
@@ -44,7 +44,6 @@ def init_db():
         )
     ''')
     conn.commit()
-    # 初始化配置（如果不存在）
     c.execute('INSERT OR IGNORE INTO bot_config (key, value) VALUES (?, ?)', ('admin_group_id', str(ADMIN_GROUP_ID)))
     conn.commit()
     conn.close()
@@ -111,7 +110,7 @@ def get_last_message_status(user_id):
     conn.close()
     return {'id': row[0], 'content': row[1], 'replied': row[2]} if row else None
 
-# ------------------ 工作时间判断（北京时间） ------------------
+# ------------------ 工作时间判断 ------------------
 def is_working_time():
     beijing_tz = timezone(timedelta(hours=8))
     now = datetime.now(beijing_tz)
@@ -129,6 +128,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
     )
 
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """获取当前聊天ID（私聊返回用户ID，群组返回群组ID）"""
+    chat = update.effective_chat
+    chat_id = chat.id
+    chat_type = chat.type
+
+    if chat_type == "private":
+        user = update.effective_user
+        user_id = user.id
+        first_name = user.first_name or ""
+        last_name = user.last_name or ""
+        full_name = f"{first_name} {last_name}".strip()
+        username = f"@{user.username}" if user.username else "未设置"
+
+        await update.message.reply_text(
+            f"📌 **你的用户信息**\n\n"
+            f"👤 昵称: {full_name}\n"
+            f"🆔 用户名: {username}\n"
+            f"🔢 用户ID: `{user_id}`\n\n"
+            f"💡 这个ID是你的唯一标识。",
+            parse_mode="Markdown"
+        )
+    elif chat_type in ["group", "supergroup"]:
+        group_name = chat.title or "未命名群组"
+        await update.message.reply_text(
+            f"📌 **群组信息**\n\n"
+            f"📛 群组名称: {group_name}\n"
+            f"🆔 群组ID: `{chat_id}`\n\n"
+            f"💡 复制这个ID（包括负号）用于配置。",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(f"当前聊天ID: `{chat_id}`\n聊天类型: {chat_type}", parse_mode="Markdown")
+
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     last = get_last_message_status(user_id)
@@ -140,61 +173,16 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"⏳ 你最后一条消息还未被回复，请耐心等待。\n内容: {last['content'][:100]}")
 
-        async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """获取当前聊天ID（私聊返回用户ID，群组返回群组ID）"""
-            chat = update.effective_chat
-            chat_id = chat.id
-            chat_type = chat.type
-
-            # 私聊
-            if chat_type == "private":
-                user = update.effective_user
-                user_id = user.id
-                first_name = user.first_name or ""
-                last_name = user.last_name or ""
-                full_name = f"{first_name} {last_name}".strip()
-                username = f"@{user.username}" if user.username else "未设置"
-
-                await update.message.reply_text(
-                    f"📌 **你的用户信息**\n\n"
-                    f"👤 昵称: {full_name}\n"
-                    f"🆔 用户名: {username}\n"
-                    f"🔢 用户ID: `{user_id}`\n\n"
-                    f"💡 这个ID是你的唯一标识。",
-                    parse_mode="Markdown"
-                )
-
-            # 群组或超级群组
-            elif chat_type in ["group", "supergroup"]:
-                group_name = chat.title or "未命名群组"
-                await update.message.reply_text(
-                    f"📌 **群组信息**\n\n"
-                    f"📛 群组名称: {group_name}\n"
-                    f"🆔 群组ID: `{chat_id}`\n\n"
-                    f"💡 复制这个ID（包括负号）用于配置。",
-                    parse_mode="Markdown"
-                )
-
-            # 其他类型（频道等）
-            else:
-                await update.message.reply_text(
-                    f"当前聊天ID: `{chat_id}`\n聊天类型: {chat_type}",
-                    parse_mode="Markdown"
-                )
-
 # ------------------ 超级管理员命令 ------------------
 async def set_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """修改管理员群组ID（仅超级管理员可用）"""
     user_id = update.effective_user.id
     if user_id != SUPER_ADMIN_ID:
         await update.message.reply_text("❌ 只有超级管理员可以使用此命令。")
         return
-
     args = context.args
     if not args:
         await update.message.reply_text("用法: /setgroup <群组ID>\n\n例如: /setgroup -1001234567890")
         return
-
     try:
         new_group_id = int(args[0])
         set_admin_group_id(new_group_id)
@@ -208,11 +196,9 @@ async def forward_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = user.id
 
-    # 获取用户信息（转义特殊字符）
     name = escape_markdown(user.first_name or "", version=2)
     username = f"@{escape_markdown(user.username or '', version=2)}" if user.username else "无"
 
-    # 处理消息内容
     if message.text:
         content = escape_markdown(message.text, version=2)
         msg_type = "text"
@@ -237,10 +223,7 @@ async def forward_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ 暂不支持此类型消息")
         return
 
-    # 保存用户消息
     user_msg_id = save_message(user_id, "user_to_admin", content)
-
-    # 发给管理员
     admin_group = get_admin_group_id()
     forward_text = (
         f"📨 **新消息**\n"
@@ -259,7 +242,6 @@ async def forward_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         save_reply_mapping(sent.message_id, user_id, user_msg_id)
 
-        # 如果非图片/视频等，还需要发送媒体文件
         if msg_type in ("photo", "video", "document", "voice"):
             if msg_type == "photo":
                 await context.bot.send_photo(chat_id=admin_group, photo=file_id)
@@ -269,12 +251,10 @@ async def forward_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_document(chat_id=admin_group, document=file_id)
             elif msg_type == "voice":
                 await context.bot.send_voice(chat_id=admin_group, voice=file_id)
-
     except Exception as e:
         await update.message.reply_text(f"❌ 转发失败: {e}")
         return
 
-    # 回复用户
     await send_typing(update.effective_chat.id, context)
     if is_working_time():
         await update.message.reply_text("✅ 消息已收到，管理员会尽快回复。")
@@ -341,15 +321,11 @@ def main():
     init_db()
     app = Application.builder().token(TOKEN).build()
 
-    # 用户命令
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("id", cmd_id))
     app.add_handler(CommandHandler("status", my_status))
-    app.add_handler(CommandHandler("id", my_id))
-
-    # 超级管理员命令（修改群组）
     app.add_handler(CommandHandler("setgroup", set_group))
 
-    # 消息处理器
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, forward_to_admin))
     app.add_handler(MessageHandler(filters.ChatType.GROUPS & ~filters.COMMAND, handle_admin_reply))
     app.add_handler(CallbackQueryHandler(status_callback, pattern="^status_"))
