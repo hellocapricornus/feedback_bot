@@ -140,30 +140,47 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"⏳ 你最后一条消息还未被回复，请耐心等待。\n内容: {last['content'][:100]}")
 
-async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """获取当前聊天ID（私聊返回用户ID，群组返回群组ID）"""
-    chat = update.effective_chat
-    chat_id = chat.id
-    chat_type = chat.type
+        async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """获取当前聊天ID（私聊返回用户ID，群组返回群组ID）"""
+            chat = update.effective_chat
+            chat_id = chat.id
+            chat_type = chat.type
 
-    if chat_type in ["group", "supergroup"]:
-        await update.message.reply_text(
-            f"📌 **当前群组信息**\n\n"
-            f"群组名称: {chat.title}\n"
-            f"群组ID: `{chat_id}`\n\n"
-            f"💡 复制这个ID（包括负号）用于 `/setgroup` 命令。",
-            parse_mode="Markdown"
-        )
-    else:
-        user = update.effective_user
-        await update.message.reply_text(
-            f"📌 **你的用户信息**\n\n"
-            f"昵称: {user.first_name}\n"
-            f"用户名: @{user.username}" if user.username else "用户名: 未设置"
-            f"\n用户ID: `{chat_id}`\n\n"
-            f"💡 这个ID是你的唯一标识。",
-            parse_mode="Markdown"
-        )
+            # 私聊
+            if chat_type == "private":
+                user = update.effective_user
+                user_id = user.id
+                first_name = user.first_name or ""
+                last_name = user.last_name or ""
+                full_name = f"{first_name} {last_name}".strip()
+                username = f"@{user.username}" if user.username else "未设置"
+
+                await update.message.reply_text(
+                    f"📌 **你的用户信息**\n\n"
+                    f"👤 昵称: {full_name}\n"
+                    f"🆔 用户名: {username}\n"
+                    f"🔢 用户ID: `{user_id}`\n\n"
+                    f"💡 这个ID是你的唯一标识。",
+                    parse_mode="Markdown"
+                )
+
+            # 群组或超级群组
+            elif chat_type in ["group", "supergroup"]:
+                group_name = chat.title or "未命名群组"
+                await update.message.reply_text(
+                    f"📌 **群组信息**\n\n"
+                    f"📛 群组名称: {group_name}\n"
+                    f"🆔 群组ID: `{chat_id}`\n\n"
+                    f"💡 复制这个ID（包括负号）用于配置。",
+                    parse_mode="Markdown"
+                )
+
+            # 其他类型（频道等）
+            else:
+                await update.message.reply_text(
+                    f"当前聊天ID: `{chat_id}`\n聊天类型: {chat_type}",
+                    parse_mode="Markdown"
+                )
 
 # ------------------ 超级管理员命令 ------------------
 async def set_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
