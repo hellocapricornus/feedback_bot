@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import sqlite3
 import time
 from datetime import datetime, time as dt_time, timezone, timedelta
