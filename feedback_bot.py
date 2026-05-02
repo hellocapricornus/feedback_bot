@@ -458,6 +458,8 @@ async def setup_bot_commands(app):
                 BotCommand("setwelcome", "📝 设置自定义欢迎消息"),
                 BotCommand("preview", "👁️ 预览当前欢迎消息"),
                 BotCommand("delwelcome", "🗑️ 删除欢迎消息"),
+                BotCommand("clearpending", "✅ 清理未回复消息"),
+                BotCommand("clearold", "🗑️ 清理旧消息（/clearold 30）"),
                 BotCommand("setgroup", "⚙️ 设置管理员群组"),
             ]
             await app.bot.set_my_commands(
@@ -1141,6 +1143,127 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except:
             pass
 
+# ------------------ 消息清理功能 ------------------
+async def clear_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """一键标记所有消息为已回复（管理员命令）"""
+    if str(update.effective_chat.id) != str(get_admin_group_id()):
+        await update.message.reply_text("❌ 此命令只能在管理员群组中使用。")
+        return
+
+    # 显示确认按钮
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ 确认标记所有为已回复", callback_data="confirm_clear_pending"),
+            InlineKeyboardButton("❌ 取消", callback_data="cancel_clear_pending")
+        ]
+    ])
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*) FROM messages WHERE replied = 0 AND direction = "user_to_admin"')
+            count = c.fetchone()[0]
+
+    if count == 0:
+        await update.message.reply_text("✅ 当前没有待回复消息。")
+        return
+
+    await update.message.reply_text(
+        f"⚠️ 当前有 **{count}** 条未回复消息\n\n"
+        "确认要将它们全部标记为已回复吗？\n\n"
+        "注意：这不会影响用户，只是清理统计数字。",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+async def confirm_clear_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """确认清理未回复消息"""
+    query = update.callback_query
+    await query.answer()
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('UPDATE messages SET replied = 1 WHERE replied = 0 AND direction = "user_to_admin"')
+            count = c.rowcount
+            conn.commit()
+
+    await query.edit_message_text(f"✅ 已将 {count} 条消息标记为已回复。")
+    logger.info(f"管理员清理了 {count} 条未回复消息")
+
+async def cancel_clear_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """取消清理"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("❌ 已取消清理操作。")
+
+async def clear_old_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """清理旧消息记录（保留最近N天）"""
+    if str(update.effective_chat.id) != str(get_admin_group_id()):
+        await update.message.reply_text("❌ 此命令只能在管理员群组中使用。")
+        return
+
+    args = context.args
+    days = 7  # 默认保留7天
+
+    if args:
+        try:
+            days = int(args[0])
+        except ValueError:
+            await update.message.reply_text("用法: /clearold <天数>\n\n例如: /clearold 30")
+            return
+
+    if days < 1:
+        await update.message.reply_text("❌ 天数必须大于0")
+        return
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(f"✅ 删除{days}天前的消息", callback_data=f"confirm_clear_{days}"),
+            InlineKeyboardButton("❌ 取消", callback_data="cancel_clear_pending")
+        ]
+    ])
+
+    cutoff_time = int(time.time()) - (days * 86400)
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*) FROM messages WHERE timestamp < ?', (cutoff_time,))
+            count = c.fetchone()[0]
+
+    if count == 0:
+        await update.message.reply_text(f"✅ 没有 {days} 天前的旧消息。")
+        return
+
+    await update.message.reply_text(
+        f"⚠️ 将删除 **{days}** 天前的 **{count}** 条消息记录\n\n"
+        "注意：\n"
+        "• 只删除消息记录，不影响回复映射\n"
+        "• 用户仍可正常使用\n"
+        "• 建议定期清理以节省空间",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+async def confirm_clear_old(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """确认清理旧消息"""
+    query = update.callback_query
+    await query.answer()
+
+    days = int(query.data.split("_")[2])
+    cutoff_time = int(time.time()) - (days * 86400)
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('DELETE FROM messages WHERE timestamp < ?', (cutoff_time,))
+            count = c.rowcount
+            conn.commit()
+
+    await query.edit_message_text(f"✅ 已删除 {count} 条 {days} 天前的旧消息。")
+    logger.info(f"管理员清理了 {count} 条旧消息（{days}天前）")
+
 # ------------------ 附加功能 ------------------
 async def pending_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_chat.id) != str(get_admin_group_id()):
@@ -1231,6 +1354,15 @@ def main():
 
     # 回调查询
     app.add_handler(CallbackQueryHandler(status_callback, pattern="^status_"))
+
+    # 清理消息命令
+    app.add_handler(CommandHandler("clearpending", clear_pending))
+    app.add_handler(CommandHandler("clearold", clear_old_messages))
+
+    # 清理回调
+    app.add_handler(CallbackQueryHandler(confirm_clear_pending, pattern="^confirm_clear_pending$"))
+    app.add_handler(CallbackQueryHandler(cancel_clear_pending, pattern="^cancel_clear_pending$"))
+    app.add_handler(CallbackQueryHandler(confirm_clear_old, pattern="^confirm_clear_"))
 
     # 添加生命周期钩子 - 启动时自动设置命令
     async def post_init(app):
