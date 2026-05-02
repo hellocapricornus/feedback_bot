@@ -6,7 +6,6 @@ import time
 import threading
 import asyncio
 import logging
-import json
 from datetime import datetime, time as dt_time, timezone, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats, BotCommandScopeChat
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
@@ -251,76 +250,14 @@ async def process_message_with_semaphore(user_id, callback, *args, **kwargs):
             logger.info(f"完成处理用户 {user_id} 的消息，当前并发数: {current_concurrent}")
 
 # ------------------ 发送欢迎消息给用户 ------------------
-async def send_welcome_to_user(chat_id, context):
+
+async def send_welcome_to_user(chat_id, context, is_start=False):
     """向用户发送欢迎消息"""
     welcome = get_welcome_message()
 
     if not welcome:
-        # 没有自定义欢迎消息，发送默认消息
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "🤖 反馈机器人已启动\n\n"
-                "你可以直接发送消息给我，管理员会收到并回复你。\n\n"
-                "✨ 支持同时处理多人消息，无需等待！\n\n"
-                f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
-            )
-        )
-        return
-
-    try:
-        content_type = welcome['content_type']
-
-        if content_type == 'text':
-            # 文字欢迎消息
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=welcome['content']
-            )
-        elif content_type == 'photo':
-            # 图片欢迎消息
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        elif content_type == 'video':
-            # 视频欢迎消息
-            await context.bot.send_video(
-                chat_id=chat_id,
-                video=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        elif content_type == 'animation':
-            # GIF动图欢迎消息
-            await context.bot.send_animation(
-                chat_id=chat_id,
-                animation=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        elif content_type == 'document':
-            # 文件欢迎消息
-            await context.bot.send_document(
-                chat_id=chat_id,
-                document=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        elif content_type == 'voice':
-            # 语音欢迎消息
-            await context.bot.send_voice(
-                chat_id=chat_id,
-                voice=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        elif content_type == 'audio':
-            # 音频欢迎消息
-            await context.bot.send_audio(
-                chat_id=chat_id,
-                audio=welcome['file_id'],
-                caption=welcome['caption'] or ""
-            )
-        else:
-            # 未知类型，发送默认消息
+        # 没有自定义欢迎消息，不发送额外内容（start已经发了固定提示）
+        if not is_start:
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=(
@@ -329,17 +266,74 @@ async def send_welcome_to_user(chat_id, context):
                     f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
                 )
             )
+        return
+
+    try:
+        content_type = welcome['content_type']
+
+        if content_type == 'text':
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=welcome['content']
+            )
+        elif content_type == 'photo':
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        elif content_type == 'video':
+            await context.bot.send_video(
+                chat_id=chat_id,
+                video=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        elif content_type == 'animation':
+            await context.bot.send_animation(
+                chat_id=chat_id,
+                animation=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        elif content_type == 'document':
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        elif content_type == 'voice':
+            await context.bot.send_voice(
+                chat_id=chat_id,
+                voice=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        elif content_type == 'audio':
+            await context.bot.send_audio(
+                chat_id=chat_id,
+                audio=welcome['file_id'],
+                caption=welcome['caption'] or ""
+            )
+        else:
+            if not is_start:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "🤖 反馈机器人已启动\n\n"
+                        "你可以直接发送消息给我，管理员会收到并回复你。\n\n"
+                        f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
+                    )
+                )
     except Exception as e:
         logger.error(f"发送欢迎消息失败: {e}")
-        # 发送失败时显示默认消息
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "🤖 反馈机器人已启动\n\n"
-                "你可以直接发送消息给我，管理员会收到并回复你。\n\n"
-                f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
+        if not is_start:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "🤖 反馈机器人已启动\n\n"
+                    "你可以直接发送消息给我，管理员会收到并回复你。\n\n"
+                    f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
+                )
             )
-        )
+
 
 # ------------------ 预览欢迎消息 ------------------
 async def preview_welcome(chat_id, context):
@@ -480,8 +474,16 @@ async def setup_bot_commands(app):
 
 # ------------------ 用户命令 ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """启动命令 - 直接发送欢迎消息"""
-    await send_welcome_to_user(update.effective_chat.id, context)
+    """启动命令 - 先发送固定提示，再发欢迎消息"""
+    # 先发送固定提示
+    await update.message.reply_text(
+        "🤖 反馈机器人已启动\n\n"
+        "你可以直接发送消息给我，管理员会收到并回复你。\n\n"
+        f"📌 非工作时间（{NON_WORKING_START}:00 - {NON_WORKING_END}:00）消息会延迟处理。"
+    )
+
+    # 再发送自定义欢迎消息
+    await send_welcome_to_user(update.effective_chat.id, context, is_start=True)
 
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -904,85 +906,127 @@ async def _forward_to_admin_impl(update: Update, context: ContextTypes.DEFAULT_T
     name = escape_markdown(user.first_name or "", version=2)
     username = f"@{escape_markdown(user.username or '', version=2)}" if user.username else "无"
 
-    forward_text_template = (
-        f"📨 **新消息**\n"
-        f"👤 昵称: {name}\n"
-        f"🆔 用户名: {username}\n"
-        f"🔢 ID: `{user_id}`\n"
-        f"💬 内容: {{}}\n\n"
-        f"👇 回复此消息即可回答用户。"
-    )
-
     admin_group = get_admin_group_id()
 
     try:
         if message.text:
+            msg_id = save_message(user_id, "user_to_admin", message.text[:1000], 'text')
             content = escape_markdown(message.text, version=2)
             if len(content) > 500:
                 content = content[:500] + "..."
 
-            forward_text = forward_text_template.format(content)
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: {content}\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent = await context.bot.send_message(
                 chat_id=admin_group,
                 text=forward_text,
                 parse_mode="MarkdownV2"
             )
-            msg_id = save_message(user_id, "user_to_admin", message.text[:1000], 'text')
             save_reply_mapping(sent.message_id, user_id, msg_id)
 
         elif message.photo:
             file_id = message.photo[-1].file_id
-            caption = escape_markdown(message.caption or "无说明", version=2)
+            caption_text = message.caption or "无说明"
+            msg_id = save_message(user_id, "user_to_admin", f"📷 图片: {caption_text}", 'photo', file_id)
+
+            caption = escape_markdown(caption_text, version=2)
             if len(caption) > 200:
                 caption = caption[:200] + "..."
 
-            forward_text = forward_text_template.format(f"📷 图片\n说明: {caption}")
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: 📷 图片\n"
+                f"📝 说明: {caption}\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent = await context.bot.send_photo(
                 chat_id=admin_group,
                 photo=file_id,
                 caption=forward_text,
                 parse_mode="MarkdownV2"
             )
-            msg_id = save_message(user_id, "user_to_admin", f"📷 图片: {message.caption or '无说明'}", 'photo', file_id)
             save_reply_mapping(sent.message_id, user_id, msg_id)
 
         elif message.video:
             file_id = message.video.file_id
-            caption = escape_markdown(message.caption or "无说明", version=2)
+            caption_text = message.caption or "无说明"
+            msg_id = save_message(user_id, "user_to_admin", f"🎬 视频: {caption_text}", 'video', file_id)
+
+            caption = escape_markdown(caption_text, version=2)
             if len(caption) > 200:
                 caption = caption[:200] + "..."
 
-            forward_text = forward_text_template.format(f"🎬 视频\n说明: {caption}")
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: 🎬 视频\n"
+                f"📝 说明: {caption}\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent = await context.bot.send_video(
                 chat_id=admin_group,
                 video=file_id,
                 caption=forward_text,
                 parse_mode="MarkdownV2"
             )
-            msg_id = save_message(user_id, "user_to_admin", f"🎬 视频: {message.caption or '无说明'}", 'video', file_id)
             save_reply_mapping(sent.message_id, user_id, msg_id)
 
         elif message.document:
             file_id = message.document.file_id
-            file_name = escape_markdown(message.document.file_name or "未命名文件", version=2)
-            caption = escape_markdown(message.caption or "无说明", version=2)
+            file_name = message.document.file_name or "未命名文件"
+            caption_text = message.caption or "无说明"
+            msg_id = save_message(user_id, "user_to_admin", f"📄 文件 {file_name}: {caption_text}", 'document', file_id)
+
+            safe_name = escape_markdown(file_name, version=2)
+            caption = escape_markdown(caption_text, version=2)
             if len(caption) > 200:
                 caption = caption[:200] + "..."
 
-            forward_text = forward_text_template.format(f"📄 文件: {file_name}\n说明: {caption}")
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: 📄 文件: {safe_name}\n"
+                f"📝 说明: {caption}\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent = await context.bot.send_document(
                 chat_id=admin_group,
                 document=file_id,
                 caption=forward_text,
                 parse_mode="MarkdownV2"
             )
-            msg_id = save_message(user_id, "user_to_admin", f"📄 文件 {file_name}: {message.caption or '无说明'}", 'document', file_id)
             save_reply_mapping(sent.message_id, user_id, msg_id)
 
         elif message.voice:
             file_id = message.voice.file_id
-
-            forward_text = forward_text_template.format("🎤 语音消息")
+            msg_id = save_message(user_id, "user_to_admin", "🎤 语音消息", 'voice', file_id)
+            
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: 🎤 语音消息\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent_text = await context.bot.send_message(
                 chat_id=admin_group,
                 text=forward_text,
@@ -992,14 +1036,25 @@ async def _forward_to_admin_impl(update: Update, context: ContextTypes.DEFAULT_T
                 chat_id=admin_group,
                 voice=file_id
             )
-            msg_id = save_message(user_id, "user_to_admin", "🎤 语音消息", 'voice', file_id)
             save_reply_mapping(sent_text.message_id, user_id, msg_id)
 
         elif message.sticker:
             file_id = message.sticker.file_id
             emoji = message.sticker.emoji or "未知"
+            msg_id = save_message(user_id, "user_to_admin", f"🏷️ 贴纸 ({emoji})", 'sticker', file_id)
 
-            forward_text = forward_text_template.format(f"🏷️ 贴纸 ({emoji})")
+            # 转义 emoji 中的特殊字符
+            safe_emoji = escape_markdown(emoji, version=2)
+
+            title = f"📨 **新消息 \\#{msg_id}**"
+            forward_text = (
+                f"{title}\n"
+                f"👤 昵称: {name}\n"
+                f"🆔 用户名: {username}\n"
+                f"🔢 ID: `{user_id}`\n"
+                f"💬 内容: 🏷️ 贴纸 \\({safe_emoji}\\)\n\n"
+                f"👇 回复此消息即可回答用户。"
+            )
             sent = await context.bot.send_sticker(
                 chat_id=admin_group,
                 sticker=file_id
@@ -1009,7 +1064,6 @@ async def _forward_to_admin_impl(update: Update, context: ContextTypes.DEFAULT_T
                 text=forward_text,
                 parse_mode="MarkdownV2"
             )
-            msg_id = save_message(user_id, "user_to_admin", f"🏷️ 贴纸 ({emoji})", 'sticker', file_id)
             save_reply_mapping(sent_text.message_id, user_id, msg_id)
 
         else:
@@ -1246,6 +1300,203 @@ async def clear_old_messages(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="Markdown"
     )
 
+# ------------------ 查看未回复消息详情 ------------------
+async def pending_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """管理员命令：查看未回复消息详情"""
+    if str(update.effective_chat.id) != str(get_admin_group_id()):
+        return
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT id, user_id, content, content_type, timestamp 
+                FROM messages 
+                WHERE direction = 'user_to_admin' AND replied = 0 
+                ORDER BY timestamp DESC
+                LIMIT 10
+            ''')
+            pending_messages = c.fetchall()
+            c.execute('SELECT COUNT(*) FROM messages WHERE direction = "user_to_admin" AND replied = 0')
+            total_count = c.fetchone()[0]
+
+    if total_count == 0:
+        await update.message.reply_text("✅ 当前没有未回复的消息。")
+        return
+
+    message_text = f"📊 **未回复消息列表**（共 {total_count} 条）\n\n"
+
+    for i, msg in enumerate(pending_messages, 1):
+        msg_id, user_id, content, content_type, timestamp = msg
+        msg_time = datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=8)))
+        time_str = msg_time.strftime("%m-%d %H:%M")
+
+        if content_type == 'text':
+            display_content = content[:80] + "..." if len(content) > 80 else content
+        elif content_type == 'photo':
+            display_content = "📷 图片消息"
+        elif content_type == 'video':
+            display_content = "🎬 视频消息"
+        elif content_type == 'document':
+            display_content = "📄 文件消息"
+        elif content_type == 'voice':
+            display_content = "🎤 语音消息"
+        elif content_type == 'sticker':
+            display_content = "🏷️ 贴纸消息"
+        else:
+            display_content = content[:80]
+
+        message_text += (
+            f"**{i}.** 🆔 `{user_id}` | ⏰ {time_str}\n"
+            f"💬 {display_content}\n"
+            f"📌 消息ID: `{msg_id}`\n\n"
+        )
+
+    if total_count > 10:
+        message_text += f"📌 ...还有 {total_count - 10} 条未显示\n\n"
+
+    message_text += "💡 回复对应的消息即可回复用户。"
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 刷新列表", callback_data="refresh_pending"),
+            InlineKeyboardButton("✅ 全部已回复", callback_data="clear_all_pending"),
+        ]
+    ])
+
+    await update.message.reply_text(message_text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+async def refresh_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """刷新未回复消息列表"""
+    query = update.callback_query
+    await query.answer("刷新中...")
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT id, user_id, content, content_type, timestamp 
+                FROM messages 
+                WHERE direction = 'user_to_admin' AND replied = 0 
+                ORDER BY timestamp DESC
+                LIMIT 10
+            ''')
+            pending_messages = c.fetchall()
+            c.execute('SELECT COUNT(*) FROM messages WHERE direction = "user_to_admin" AND replied = 0')
+            total_count = c.fetchone()[0]
+
+    if total_count == 0:
+        await query.edit_message_text("✅ 当前没有未回复的消息。")
+        return
+
+    message_text = f"📊 **未回复消息列表**（共 {total_count} 条）\n\n"
+
+    for i, msg in enumerate(pending_messages, 1):
+        msg_id, user_id, content, content_type, timestamp = msg
+        msg_time = datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=8)))
+        time_str = msg_time.strftime("%m-%d %H:%M")
+
+        if content_type == 'text':
+            display_content = content[:80] + "..." if len(content) > 80 else content
+        elif content_type == 'photo':
+            display_content = "📷 图片消息"
+        elif content_type == 'video':
+            display_content = "🎬 视频消息"
+        elif content_type == 'document':
+            display_content = "📄 文件消息"
+        elif content_type == 'voice':
+            display_content = "🎤 语音消息"
+        elif content_type == 'sticker':
+            display_content = "🏷️ 贴纸消息"
+        else:
+            display_content = content[:80]
+
+        message_text += (
+            f"**{i}.** 🆔 `{user_id}` | ⏰ {time_str}\n"
+            f"💬 {display_content}\n"
+            f"📌 消息ID: `{msg_id}`\n\n"
+        )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 刷新列表", callback_data="refresh_pending"),
+            InlineKeyboardButton("✅ 全部已回复", callback_data="clear_all_pending"),
+        ]
+    ])
+
+    await query.edit_message_text(message_text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+async def clear_all_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """一键标记所有为已回复"""
+    query = update.callback_query
+    await query.answer()
+
+    with db_lock:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            c = conn.cursor()
+            c.execute('UPDATE messages SET replied = 1 WHERE replied = 0 AND direction = "user_to_admin"')
+            count = c.rowcount
+            conn.commit()
+
+    await query.edit_message_text(f"✅ 已将 {count} 条消息标记为已回复。")
+    logger.info(f"管理员一键标记 {count} 条消息为已回复")
+
+# ------------------ 附加功能 ------------------
+async def concurrent_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_chat.id) != str(get_admin_group_id()):
+        return
+
+    current_concurrent = MAX_CONCURRENT_USERS - user_semaphore._value
+    await update.message.reply_text(
+        f"🔄 并发状态：\n"
+        f"当前处理中: {current_concurrent}\n"
+        f"最大并发: {MAX_CONCURRENT_USERS}\n"
+        f"可用槽位: {user_semaphore._value}"
+    )
+
+
+# 添加帮助命令
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """显示帮助信息"""
+    chat_type = update.effective_chat.type
+
+    if chat_type == "private":
+        help_text = (
+            "🤖 **反馈机器人使用帮助**\n\n"
+            "📝 **基本使用：**\n"
+            "• 直接发送消息即可，管理员会看到并回复\n"
+            "• 支持文字、图片、视频、文件、语音等\n\n"
+            "📋 **可用命令：**\n"
+            "• /start - 查看欢迎消息\n"
+            "• /id - 获取你的用户ID\n"
+            "• /status - 查询消息回复状态\n\n"
+            "⏰ **工作时间：**\n"
+            f"• {NON_WORKING_END}:00 - 次日{NON_WORKING_START}:00 为工作时间\n"
+            "• 非工作时间消息会延迟处理\n\n"
+            "💡 **提示：**\n"
+            "• 请耐心等待管理员回复\n"
+            "• 可以发送多条消息"
+        )
+    else:
+        help_text = (
+            "🤖 **群组反馈机器人帮助**\n\n"
+            "📋 **可用命令：**\n"
+            "• /pending - 查看待回复消息详情\n"
+            "• /concurrent - 查看并发处理状态\n"
+            "• /id - 获取当前群组ID\n\n"
+            "💡 **管理员功能：**\n"
+            "• 回复机器人转发的消息来回复用户\n"
+            "• /setwelcome - 设置欢迎消息\n"
+            "• /preview - 预览欢迎消息\n"
+            "• /delwelcome - 删除欢迎消息\n"
+            "• /clearpending - 清理未回复消息\n"
+            "• /clearold - 清理旧消息"
+        )
+
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
 async def confirm_clear_old(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """确认清理旧消息"""
     query = update.callback_query
@@ -1264,30 +1515,7 @@ async def confirm_clear_old(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"✅ 已删除 {count} 条 {days} 天前的旧消息。")
     logger.info(f"管理员清理了 {count} 条旧消息（{days}天前）")
 
-# ------------------ 附加功能 ------------------
-async def pending_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != str(get_admin_group_id()):
-        return
 
-    with db_lock:
-        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-            c = conn.cursor()
-            c.execute('SELECT COUNT(*) FROM messages WHERE direction = \'user_to_admin\' AND replied = 0')
-            count = c.fetchone()[0]
-
-    await update.message.reply_text(f"📊 当前待回复消息数: {count}")
-
-async def concurrent_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_chat.id) != str(get_admin_group_id()):
-        return
-
-    current_concurrent = MAX_CONCURRENT_USERS - user_semaphore._value
-    await update.message.reply_text(
-        f"🔄 并发状态：\n"
-        f"当前处理中: {current_concurrent}\n"
-        f"最大并发: {MAX_CONCURRENT_USERS}\n"
-        f"可用槽位: {user_semaphore._value}"
-    )
 
 # ------------------ 主函数 ------------------
 def main():
@@ -1363,6 +1591,9 @@ def main():
     app.add_handler(CallbackQueryHandler(confirm_clear_pending, pattern="^confirm_clear_pending$"))
     app.add_handler(CallbackQueryHandler(cancel_clear_pending, pattern="^cancel_clear_pending$"))
     app.add_handler(CallbackQueryHandler(confirm_clear_old, pattern="^confirm_clear_"))
+    # 刷新和清理待回复的回调查询
+    app.add_handler(CallbackQueryHandler(refresh_pending, pattern="^refresh_pending$"))
+    app.add_handler(CallbackQueryHandler(clear_all_pending, pattern="^clear_all_pending$"))
 
     # 添加生命周期钩子 - 启动时自动设置命令
     async def post_init(app):
@@ -1393,44 +1624,6 @@ def main():
 
     # 启动轮询
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-# 添加帮助命令
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """显示帮助信息"""
-    chat_type = update.effective_chat.type
-
-    if chat_type == "private":
-        help_text = (
-            "🤖 **反馈机器人使用帮助**\n\n"
-            "📝 **基本使用：**\n"
-            "• 直接发送消息即可，管理员会看到并回复\n"
-            "• 支持文字、图片、视频、文件、语音等\n\n"
-            "📋 **可用命令：**\n"
-            "• /start - 查看欢迎消息\n"
-            "• /id - 获取你的用户ID\n"
-            "• /status - 查询消息回复状态\n\n"
-            "⏰ **工作时间：**\n"
-            f"• {NON_WORKING_END}:00 - 次日{NON_WORKING_START}:00 为工作时间\n"
-            "• 非工作时间消息会延迟处理\n\n"
-            "💡 **提示：**\n"
-            "• 请耐心等待管理员回复\n"
-            "• 可以发送多条消息"
-        )
-    else:
-        help_text = (
-            "🤖 **群组反馈机器人帮助**\n\n"
-            "📋 **可用命令：**\n"
-            "• /pending - 查看待回复消息数\n"
-            "• /concurrent - 查看并发处理状态\n"
-            "• /id - 获取当前群组ID\n\n"
-            "💡 **管理员功能：**\n"
-            "• 回复机器人转发的消息来回复用户\n"
-            "• /setwelcome - 设置欢迎消息\n"
-            "• /preview - 预览欢迎消息\n"
-            "• /delwelcome - 删除欢迎消息"
-        )
-
-    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 if __name__ == "__main__":
     main()
